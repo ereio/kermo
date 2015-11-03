@@ -6,7 +6,7 @@
 #include <linux/string.h>
 #include <asm-generic/uaccess.h>
 #include <elevator_calls.h>
-#include "elevator.h"
+#include "module.h"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("TEAM BUBDUB");
@@ -31,10 +31,6 @@ static char * print_move;
 static int len_msg;
 
 static int read_p;
-
-extern long (*STUB_start_elevator)(void);
-extern long (*STUB_issue_request)(int pass_type, int start_floor, int dest_floor);
-extern long (*STUB_stop_elevator)(void);
 
 void get_movement(char* message){
 	

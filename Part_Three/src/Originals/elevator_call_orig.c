@@ -2,7 +2,6 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 
-
 long (*STUB_start_elevator)(void) = NULL;
 long (*STUB_issue_request)(int,int,int) = NULL;
 long (*STUB_stop_elevator)(void) = NULL;
