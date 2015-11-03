@@ -5,6 +5,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <asm-generic/uaccess.h>
+#include <elevator_calls.h>
 #include "elevator.h"
 
 MODULE_LICENSE("GPL");
@@ -16,6 +17,10 @@ MODULE_DESCRIPTION("Elevator scheduling service");
 #define PARENT NULL
 #define MAXLEN 2048
 
+#define _NR_START_ELEVATOR 323
+#define _NR_ISSUE_REQUEST 324
+#define _NR_STOP_ELEVATOR 325
+
 static struct file_operations fops;
 
 static struct elevator_type elevator;
@@ -26,6 +31,10 @@ static char * print_move;
 static int len_msg;
 
 static int read_p;
+
+extern long (*STUB_start_elevator)(void);
+extern long (*STUB_issue_request)(int pass_type, int start_floor, int dest_floor);
+extern long (*STUB_stop_elevator)(void);
 
 void get_movement(char* message){
 	
