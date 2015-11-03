@@ -1,7 +1,7 @@
-TARGET := proctime
+TARGET := my_xtime
 
 ifneq ($(KERNELRELEASE),)
-	obj-m := proctime.o
+	obj-m := my_xtime.o
 else
 	KERNELDIR ?= \
 		/lib/modules/`uname -r`/build/

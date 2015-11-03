@@ -5,7 +5,6 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <asm-generic/uaccess.h>
-#include <elevator_calls.h>
 #include "module.h"
 
 MODULE_LICENSE("GPL");
@@ -31,6 +30,37 @@ static char * print_move;
 static int len_msg;
 
 static int read_p;
+
+extern long (*STUB_start_elevator)(void);
+long start_elevator(void) {
+	printk("Starting elevator\n");
+	return 0;
+}
+
+extern long (*STUB_issue_request)(int,int,int);
+long issue_request(int passenger_type, int start_floor, int destination_floor) {
+	printk("New request: %d, %d => %d\n", passenger_type, start_floor, destination_floor);
+	return 0;
+}
+
+extern long (*STUB_stop_elevator)(void);
+long stop_elevator(void) {
+	printk("Stopping elevator\n");
+	return 0;
+}
+
+
+void elevator_syscalls_create(void) {
+	STUB_start_elevator =& (start_elevator);
+	STUB_issue_request =& (issue_request);
+	STUB_stop_elevator =& (stop_elevator);
+}
+
+void elevator_syscalls_remove(void) {
+	STUB_start_elevator = NULL;
+	STUB_issue_request = NULL;
+	STUB_stop_elevator = NULL;
+}
 
 void get_movement(char* message){
 	
@@ -144,6 +174,7 @@ int elevator_release(struct inode *sp_inode, struct file *sp_file){
 
 static int elevator_init(void){
 	printk("/proc/%s create\n", ENTRY_NAME);
+	elevator_syscalls_create();
 	fops.open = elevator_open;
 	fops.read = elevator_read;
 	fops.release = elevator_release;
@@ -158,6 +189,7 @@ static int elevator_init(void){
 }
 
 static void elevator_exit(void){
+	elevator_syscalls_remove();
 	remove_proc_entry(ENTRY_NAME, NULL);
 	printk("Removing /proc/%s.\n", ENTRY_NAME);
 }

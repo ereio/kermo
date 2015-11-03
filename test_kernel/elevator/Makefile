@@ -9,7 +9,6 @@ obj-y := src/sys_start_elevator.o
 obj-y += src/sys_issue_request.o
 obj-y += src/sys_stop_elevator.o
 
-$(MODULE_NAME)-objs += src/syscalls.o
 $(MODULE_NAME)-objs += src/module.o
 obj-m := $(MODULE_NAME).o
 

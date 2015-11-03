@@ -10,7 +10,7 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Ereio");
 MODULE_DESCRIPTION("Simple module to show the seconds since the Epoch and since the last call");
 
-#define ENTRY_NAME "my_xtime"
+#define ENTRY_NAME "timer"
 #define PERMS	0644
 #define PARENT NULL
 
@@ -18,8 +18,8 @@ static struct file_operations fops;
 
 static char * current_msg;
 
-static unsigned long current_time;
-static unsigned long elapsed_time;
+static struct timespec current_time;
+static struct timespec elapsed_time;
 
 static int read_p;
 static int called = 0;
@@ -44,7 +44,7 @@ ssize_t my_xtime_read(struct file *sp_file, char __user *buf, size_t size, loff_
 	int cur_len = 0;
 	int len = 0;
 	
-	struct timeval time;
+	struct timespec time;
 	
 	/* Read loops until you return 0*/
 	read_p = !read_p;
@@ -52,17 +52,17 @@ ssize_t my_xtime_read(struct file *sp_file, char __user *buf, size_t size, loff_
 
 	printk("my_xtime called read\n");
 
-	do_gettimeofday(&time);
-	current_time = (unsigned long)(time.tv_sec);
-	cur_len = snprintf(current_msg, maxlen,"current time: %lu\n", current_time);
+	getnstimeofday(&time);
+	current_time = time;
+	cur_len = snprintf(current_msg, maxlen,"current time: %lu.%06lu\n", time.tv_sec, time.tv_nsec);
 	if(called == 1) {
-		elapsed_time = current_time - elapsed_time;
-		snprintf(current_msg + cur_len, maxlen-cur_len, "elapsed time: %lu\n", elapsed_time);   
+		elapsed_time = timespec_sub(current_time, elapsed_time);
+		snprintf(current_msg + cur_len, maxlen-cur_len, "elapsed time: %lu.%06lu\n", elapsed_time.tv_sec, elapsed_time.tv_nsec);   
 	}
 	
 	len = strlen(current_msg);
 	copy_to_user(buf, current_msg, len);
-	printk("my_xtime> read out: %s|called == %d|current_time == %lu\n", current_msg, len, current_time);
+	printk("my_xtime> read out: %s|called == %d\n", current_msg, len);
 	
 	elapsed_time = current_time;
 	if(called == 0) called++;
