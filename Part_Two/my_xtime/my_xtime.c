@@ -10,7 +10,7 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Ereio");
 MODULE_DESCRIPTION("Simple module to show the seconds since the Epoch and since the last call");
 
-#define ENTRY_NAME "timer"
+#define ENTRY_NAME "timed"
 #define PERMS	0644
 #define PARENT NULL
 
