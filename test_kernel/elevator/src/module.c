@@ -32,6 +32,10 @@ static struct file_operations fops;
 static struct elevator_type elevator;
 static struct building_type building;
 
+static struct task_struct *elevator;	/* mover */
+static struct task_struct *loader;	/* consumer/mover */
+static struct task_struct *building;	/* producer */
+
 static char * current_msg;
 static char * print_move;
 static int len_msg;
@@ -41,6 +45,14 @@ static int read_p;
 extern long (*STUB_start_elevator)(void);
 long start_elevator(void) {
 	printk("Starting elevator\n");
+
+	elevator.movement = IDLE;
+	elevator.floor = 1;
+	elevator.target = 2;
+	elevator.load = 0;
+	elevator.occupancy = 0;
+	elevator.half = 0;
+
 	return 0;
 }
 
@@ -49,7 +61,6 @@ long issue_request(int pass_type, int sfloor, int dfloor) {
 	printk("New request: %d, %d => %d\n", pass_type, sfloor, dfloor);
 	
 	
-	list_add_tail(&my_head, &building.waiting); 			
 	return 0;
 }
 
@@ -72,8 +83,9 @@ void elevator_syscalls_remove(void) {
 	STUB_stop_elevator = NULL;
 }
 
-void get_movement(char* message){
-	
+void print_elevator_status(char* message){
+	len_msg += snprintf(current_msg, MAXLEN, "\n--- Elevator ---\n");
+
 	switch(elevator.movement){
 		case IDLE:
 			strcpy(print_move, "IDLE");
@@ -93,37 +105,33 @@ void get_movement(char* message){
 	}
 	
 	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "Movement state: %s\n", print_move);
+	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "Current Floor: %d\n", elevator.floor);
+	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "Next Floor: %d\n", elevator.target);
+	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, 
+			"Current Weight: %d\nPassengers: %d", elevator.load, elevator.occupancy); 
 }
 
-void get_floor(char* message){
+void print_building_status(char* message){
+	int i = 0;
+	int sfloor;
+	int waiting[10];
+	node * ptr;
+	passenger_type * person;
+	
+	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "\n--- Building Stats ---\n");
 
-    len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "Current Floor: %d\n", elevator.floor);
-}
+	if(!list_empty(&building.waiting)){
+		list_for_each(ptr, &building.waiting){
+			person = list_entry(ptr,passenger_type,list);
+			sfloor = person->sfloor-1;
+			waiting[sfloor] += 1;
+		}
+	}
 
-void get_target(char* message){
+	for(i=0;i < 10; i++)
+		len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "Floor %d: %d\n", i+1, waiting[i]);
 
-    len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "Next Floor: %d\n", elevator.target); 
-}
-
-void get_load(char* message){
-
-    len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, 
-		"Current Weight: %d\nPassengers: %d", elevator.load, elevator.occupancy); 
-}
-
-void get_total_waiting(char* message){
-    int i = 0;
-
-
-    for(i=0; i < 10; i++){
-    	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, 
-		"Floor %d: %d\n", i+1, building.waiting[i]); 
-    }
-}
-
-void get_total_serviced(char* message){
-
-    len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, 
+	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, 
 		"Total Serviced: %d\n", building.serviced); 
 }
 
@@ -140,17 +148,6 @@ int elevator_open(struct inode *sp_inode, struct file *sp_file){
 		return -ENOMEM;
 	}
 
-	/* Initalize */	
-	for(i = 0; i < 10; i++)
-		building.waiting[i] = (i * 2) % 4;
-	
-	building.serviced = 0;
-
-	elevator.floor = 1;
-	elevator.target = 10;
-	elevator.load = 0;
-	
-	elevator.movement = IDLE;
 	return 0;
 }
 
@@ -159,22 +156,10 @@ ssize_t elevator_read(struct file *sp_file, char __user *buf, size_t size, loff_
 	read_p = !read_p;
 	if(read_p) return 0;
 
-	len_msg = 0;
-	len_msg += snprintf(current_msg, MAXLEN, "\n--- Elevator ---\n");
-
-	get_movement(current_msg);
-	get_floor(current_msg);
-	get_target(current_msg);
-	get_load(current_msg);
-
-	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "\n--- Building Stats ---\n");
-
-	get_total_waiting(current_msg);
-	get_total_serviced(current_msg);
+	print_elevator_status(current_msg);
+	print_building_status(current_msg);
 
 	copy_to_user(buf, current_msg, strlen(current_msg));
-	printk("elevator> read out: %s\n", current_msg);
-	
 	return len;
 }
 
@@ -186,13 +171,15 @@ int elevator_release(struct inode *sp_inode, struct file *sp_file){
 static int elevator_init(void){
 	printk("elevator initalizing\n");
 	elevator_syscalls_create();
-
+	
 	fops.open = elevator_open;
 	fops.read = elevator_read;
 	fops.release = elevator_release;
 
 	INIT_LIST_HEAD(&elevator.riders);
 	INIT_LIST_HEAD(&building.waiting);
+
+	building.serviced = 0;
 
 	if(!proc_create(ENTRY_NAME, PERMS, NULL, &fops)){
 		printk("ERROR! elevator_init\n");

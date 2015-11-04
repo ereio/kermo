@@ -12,6 +12,7 @@ typedef struct elevator_type{
 	int target;
 	int occupancy;
 	int load;
+	int half;
 	
 	movement_type movement;	
 	node riders; 
@@ -31,13 +32,9 @@ typedef struct passenger_type{
 
 void elevator_syscalls_create(void);
 void elevator_syscalls_remove(void);
-void get_movement(char* message);
-void get_movement(char* message);
-void get_floor(char* message);
-void get_target(char* message);
-void get_load(char* message);
-void get_total_waiting(char* message)
-void get_total_serviced(char* message);
+
+void print_elevator_status(void);
+void print_building_status(void);
 
 int elevator_open(struct inode *sp_inode, struct file *sp_file);
 ssize_t elevator_read(struct file *sp_file, char __user *buf, size_t size, loff_t *offset);
