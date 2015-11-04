@@ -31,6 +31,7 @@ MODULE_DESCRIPTION("Elevator scheduling service");
 #define BELLHOP 2
 #define ROOMSERVICE 3
 #define MAX_DISTANCE 9
+#define MAX_LOAD 8
 
 static struct file_operations fops;
 
@@ -65,18 +66,20 @@ long start_elevator(void) {
 }
 
 extern long (*STUB_issue_request)(int,int,int);
-long issue_request(int pass_type, int sfloor, int dfloor) {
+long issue_request(int pass_type, int sfloor, int tfloor) {
 	passenger_type * passenger;
-	printk("New request: %d, %d => %d\n", pass_type, sfloor, dfloor);
+	printk("New request: %d, %d => %d\n", pass_type, sfloor, tfloor);
 	
+	/**/
 	passenger = kmalloc(sizeof(passenger_type), KFLAGS);
 	passenger->type = pass_type;
 	passenger->sfloor = sfloor;
-	passenger->tfloor = dfloor;
+	passenger->tfloor = tfloor;
 
-	// TODO Does this belong here?
+	// TODO Does this belong here? Yes and no, it shouldn't be calling the thread directly to run,
+	// it should just be scheduling the thread to act when a scheduler is called here.
 	//  "Add_waiter is needed her, can we pass these integers to a thread instead of declaring here?
-        t_building = kthread_run(building_task_run, NULL, "building thread");
+        t_building = kthread_run(building_task_run, (void*) &passenger, "building thread");
         if (IS_ERR(t_building)) {
                 printk("Error in kthread_run building thread\n");
                 return PTR_ERR(t_building);
@@ -163,6 +166,10 @@ int elevator_open(struct inode *sp_inode, struct file *sp_file){
 	current_msg = kmalloc(sizeof(char) * MAXLEN, KFLAGS);
 	print_move = kmalloc(sizeof(char) * 50, KFLAGS);
 
+	// TODO Need a mutex here for the data accessed from retrieval
+	print_elevator_status(current_msg);
+	print_building_status(current_msg);
+	
 	if(current_msg == NULL){
 		printk("ERROR, elevator_open");
 		return -ENOMEM;
@@ -177,8 +184,7 @@ ssize_t elevator_read(struct file *sp_file, char __user *buf, size_t size, loff_
 	read_p = !read_p;
 	if(read_p) return 0;
 
-	print_elevator_status(current_msg);
-	print_building_status(current_msg);
+	
 
 	copy_to_user(buf, current_msg, strlen(current_msg));
 	return strlen(current_msg);
@@ -198,6 +204,10 @@ int elevator_task_run(void *data) {
 	int next_floor = 0;
 	int distance = MAX_DISTANCE + 1; // Max distance is 9
 
+	// TODO you should schedule sleeps within each threads 'run' while loop 
+	// By calling sleep here to account for the loading, you essentially are implying "goto" 
+	// the building thread needs a loop for it as well as I don't think it should be started and
+	// stopped as it is now. It could easily deadlock. We should put it in a scheduler as you did with the mover.
 	while (!kthread_should_stop()) {
 		ssleep(FLOOR_SLEEP); // Sleep between floors
 		mutex_lock_interruptible(&building_list_mutex); // Claim mutex
@@ -231,7 +241,7 @@ int elevator_task_run(void *data) {
 				ssleep(FLOOR_SLEEP);
 			}
 			elevator.movement = LOADING;
-			ssleep(LOAD_SLEEP); // Sleep to allow loader task to run
+			ssleep(LOAD_SLEEP); // TODO  Sleep to allow loader task to run
 		}
 		mutex_unlock(&building_list_mutex); // Release mutex
 	}
@@ -241,34 +251,36 @@ int elevator_task_run(void *data) {
 
 // Thread for loading of waiters into building list
 int building_task_run(void *data) {
-	int ret = -1;
-	// TODO We need to pass in struct passenger_type and then add as a waiter; modify add_waiter?
+	
 	passenger_type* passenger = (passenger_type*)data;
 
 	mutex_lock_interruptible(&building_list_mutex);
 
-	// TODO Add here, perhaps need to call schedule()?
-	add_waiter(passenger->type, passenger->sfloor, passenger->tfloor);
+	// TODO This should be a scheduler just like the one you've created above. The building thread should start
+	// execution in init and wait for someone to issue a request. When it does, it will load a "waiter" this should be 
+	// encapsulated in a while loop  with the same controls as the loader_task below.
+	// TODO also, add waiter became pointless
+	list_add_tail(&passenger->list, &building.waiting);
 
 	mutex_unlock(&building_list_mutex);
-
-	// TODO Not sure if this belongs here
-        ret = kthread_stop(t_building);
-        if (ret != -EINTR)
-                printk("building thread has stopped\n");
 
 	return 0;
 }
 
 // Thread for loading/unloading of waiters/passengers into/out from elevator
 int loader_task_run(void *data) {
-	// TODO should this be a while?
+	// should this be a while?
+	// TODO Yes
 	while (!kthread_should_stop()) {
+		// TODO should sleep in unison with the mover task. Try to mimic the list example as much as possible
+		// with how they handle thread execution scheduling. they use a const time and rotate opperations
+		// TODO Put these mutexes in check_floor, not here. The building mutex only has to do with
+		// loading and the elevator only has to do with unloading. Unloading doesn't need the
+		// building mutex locked
 		mutex_lock_interruptible(&elevator_list_mutex);
 		mutex_lock_interruptible(&building_list_mutex);
 
 		check_floor(elevator.floor);
-		// TODO Is this all we need? Might need to call schedule(); Uncertain.
 
 		mutex_unlock(&building_list_mutex);
 		mutex_unlock(&elevator_list_mutex);
@@ -281,7 +293,8 @@ static int elevator_init(void){
 	printk("elevator initalizing\n");
 	elevator_syscalls_create();
 
-	// TODO May need synchronization
+	// May need synchronization
+	// TODO This doesn't need it. It doesn't have any sync in the list example for init
 	fops.open = elevator_open;
 	fops.read = elevator_read;
 	fops.release = elevator_release;
@@ -316,11 +329,15 @@ static int elevator_init(void){
 }
 
 static void elevator_exit(void){
+	int ret = -1;	
 	list_del_init(&elevator.riders);
 	list_del_init(&building.waiting);
 
-	// TODO Do threads need to be stopped before lists are?
-	int ret;
+	//  Do threads need to be stopped before lists are?
+	// TODO One of the requirements is that when elevator stop is called, the elevator
+	// must first drop off all people inside it. if we're calling elevator exit, everything should already
+	// have been kfree'd and handled on the elevator side., including the lists. This is the "destructor"
+
 	ret = kthread_stop(t_elevator);
 	if (ret != -EINTR)
 		printk("elevator thread has stopped\n");
@@ -394,19 +411,29 @@ void handle_unload_pass(int type){
 			elevator.load -= 2;
 			break;
 	}
-
 }
 
-void add_waiter(int type, int sfloor, int tfloor){
-
-	/* Temporary Passenger object to be added to list */
-	passenger_type* passenger;
-
-	passenger = kmalloc(sizeof(passenger_type),KFLAGS);
-	passenger->type = type;
-	passenger->sfloor = sfloor;
-	passenger->tfloor = tfloor;
-	list_add_tail(&passenger->list, &building.waiting);
+int check_load_pass(int type){
+	switch(type){
+		case ADULT:
+			if(elevator.load + 1 <= MAX_LOAD && elevator.occupancy + 1 <= MAX_LOAD)
+				return !(elevator.load+1 == MAX_LOAD && elevator.half == 1);
+			break;
+		case CHILD:
+			if(elevator.occupancy + 1 <= MAX_LOAD && elevator.load + 1 <= MAX_LOAD)
+				return !(elevator.load+1 == MAX_LOAD && elevator.half == 1);
+			break;
+		case BELLHOP:
+			if(elevator.load + 2 <= MAX_LOAD && elevator.occupancy + 2 <= MAX_LOAD)
+				return !(elevator.load+2 == MAX_LOAD && elevator.half == 1);
+			break;
+		case ROOMSERVICE:
+			if(elevator.load + 2 <= MAX_LOAD && elevator.occupancy + 1 <= MAX_LOAD)
+				return !(elevator.load+2 == MAX_LOAD && elevator.half == 1);
+			break;
+	}
+	
+	return 0;
 }
 
 void check_floor(int floor){
@@ -423,7 +450,7 @@ void load_passenger(int floor){
 
 	list_for_each(ptr,&building.waiting){
 		person = list_entry(ptr, passenger_type, list);
-		if(person->sfloor == floor){
+		if(person->sfloor == floor && check_load_pass(person->type)){
 			list_move(&person->list, &elevator.riders);
 			handle_load_pass(person->type);
 		}
@@ -435,6 +462,7 @@ void unload_passenger(int floor){
 	passenger_type * person;
 
 	list_for_each(ptr,&elevator.riders){
+		person = list_entry(ptr, passenger_type, list);
 		if(person->tfloor == floor){
 			handle_unload_pass(person->type);
 			list_del(&person->list);
