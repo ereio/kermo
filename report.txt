@@ -50,13 +50,15 @@ Taylor Ereio
 - Part Two
 - Documentation
 - Elevator loading, unloading, List management, output and structures
-Zach Deimer
+Zach Diemer
 - List managment
 - Threading
 - Mutexing and access
+- Fixing Taylor's bugs
 Ricardo Noriega
 - Documentation
 - Part One
+- Catering
 
 ● ============================
 ● Slack Days Used
