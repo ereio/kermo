@@ -1,30 +1,30 @@
 # Kermo
 Kernel Module Observations and Elevator Simulation
 
-Member 1: Taylor Ereio
-Member 2: Zach Deimer
-Member 3: Ricardo Noriega
+<br>Member 1: Taylor Ereio
+<br>Member 2: Zach Deimer
+<br>Member 3: Ricardo Noriega
 
 p2-Ereio-Deimer-Noriega.tar Contents:
-README.txt
-report.txt
-Part_One
-Part_Two
-Part_Three
-Makefile
+<br>README.txt
+<br>report.txt
+<br>Part_One
+<br>Part_Two
+<br>Part_Three
+<br>Makefile
 
-Completed using: Linux Mint Cinnamon distro VM && Lab computer # 24
-To Build:
-./Part_One/gcc main.c
-./Part_Two/make
-./Part_Three/test_kernel/elevator/make
+<br>Completed using: Linux Mint Cinnamon distro VM && Lab computer # 24
+<br>To Build:
+<br>./Part_One/gcc main.c
+<br>./Part_Two/make
+<br>./Part_Three/test_kernel/elevator/make
 
-To Clean:
-./Part_Two/make clean
-./Part_Three/test_kernel/elevator/make clean
+<br>To Clean:
+<br>./Part_Two/make clean
+<br>./Part_Three/test_kernel/elevator/make clean
 
-To Run Producer and Consumer:
-<FILL HERE>
+<br>To Run Producer and Consumer:
+<br><FILL HERE>
 
 Known Bugs:
 1. Deadlocks
@@ -34,7 +34,7 @@ To Do:
 2. Report
 
 Additional Comments:
-1. We assumed that the messages wouldn't consume more than 2048 bytes for characters
+1. We assumed that the messages wouldn't consume more than 2048 bytes for characters 
 2. 
 
 
