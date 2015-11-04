@@ -23,6 +23,24 @@ typedef struct building_type{
 };
 
 typedef struct passenger_type{
-	double weight;	
-	person_type person;
+	node list;	
+	int type;
+	int sfloor;
+	int tfloor;
 };
+
+void elevator_syscalls_create(void);
+void elevator_syscalls_remove(void);
+void get_movement(char* message);
+void get_movement(char* message);
+void get_floor(char* message);
+void get_target(char* message);
+void get_load(char* message);
+void get_total_waiting(char* message)
+void get_total_serviced(char* message);
+
+int elevator_open(struct inode *sp_inode, struct file *sp_file);
+ssize_t elevator_read(struct file *sp_file, char __user *buf, size_t size, loff_t *offset);
+int elevator_release(struct inode *sp_inode, struct file *sp_file);
+static int elevator_init(void);
+static void elevator_exit(void);

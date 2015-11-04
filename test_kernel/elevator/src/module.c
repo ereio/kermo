@@ -16,9 +16,16 @@ MODULE_DESCRIPTION("Elevator scheduling service");
 #define PARENT NULL
 #define MAXLEN 2048
 
+#define KFLAGS (__GFP_WAIT | __GFP_IO | __GFP+FS)
 #define _NR_START_ELEVATOR 323
 #define _NR_ISSUE_REQUEST 324
 #define _NR_STOP_ELEVATOR 325
+
+#define SLEEP_TIME 1
+#define ADULT 0
+#define CHILD 1
+#define BELLHOP 2
+#define ROOMSERVICE 3
 
 static struct file_operations fops;
 
@@ -38,8 +45,11 @@ long start_elevator(void) {
 }
 
 extern long (*STUB_issue_request)(int,int,int);
-long issue_request(int passenger_type, int start_floor, int destination_floor) {
-	printk("New request: %d, %d => %d\n", passenger_type, start_floor, destination_floor);
+long issue_request(int pass_type, int sfloor, int dfloor) {
+	printk("New request: %d, %d => %d\n", pass_type, sfloor, dfloor);
+	
+	
+	list_add_tail(&my_head, &building.waiting); 			
 	return 0;
 }
 
@@ -67,19 +77,22 @@ void get_movement(char* message){
 	switch(elevator.movement){
 		case IDLE:
 			strcpy(print_move, "IDLE");
+			break;
 		case UP:
 			strcpy(print_move, "UP");
+			break;
 		case DOWN:
 			strcpy(print_move, "DOWN");
+			break;
 		case LOADING:
 			strcpy(print_move, "LOADING");
+			break;
 		case STOPPED:
 			strcpy(print_move, "STOPPED");
-		break;
-		
+			break;
 	}
 	
-	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "Movement state: %s\n", print_move); 
+	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "Movement state: %s\n", print_move);
 }
 
 void get_floor(char* message){
@@ -101,7 +114,6 @@ void get_load(char* message){
 void get_total_waiting(char* message){
     int i = 0;
 
-    len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "\n--- Building Stats ---\n");
 
     for(i=0; i < 10; i++){
     	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, 
@@ -143,41 +155,42 @@ int elevator_open(struct inode *sp_inode, struct file *sp_file){
 }
 
 ssize_t elevator_read(struct file *sp_file, char __user *buf, size_t size, loff_t *offset){
-	int len;
 	/* Read loops until you return 0*/
 	read_p = !read_p;
 	if(read_p) return 0;
-	printk("elevator called read\n");
-	start_elevator();
+
 	len_msg = 0;
 	len_msg += snprintf(current_msg, MAXLEN, "\n--- Elevator ---\n");
+
 	get_movement(current_msg);
 	get_floor(current_msg);
 	get_target(current_msg);
 	get_load(current_msg);
 
+	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "\n--- Building Stats ---\n");
+
 	get_total_waiting(current_msg);
 	get_total_serviced(current_msg);
 
-	len = strlen(current_msg);
-	copy_to_user(buf, current_msg, len);
+	copy_to_user(buf, current_msg, strlen(current_msg));
 	printk("elevator> read out: %s\n", current_msg);
 	
 	return len;
 }
 
 int elevator_release(struct inode *sp_inode, struct file *sp_file){
-	printk("elevator called release\n");
 	kfree(current_msg);
 	return 0;
 }
 
 static int elevator_init(void){
-	printk("/proc/%s create\n", ENTRY_NAME);
+	printk("elevator initalizing\n");
 	elevator_syscalls_create();
+
 	fops.open = elevator_open;
 	fops.read = elevator_read;
 	fops.release = elevator_release;
+
 	INIT_LIST_HEAD(&elevator.riders);
 	INIT_LIST_HEAD(&building.waiting);
 
@@ -191,6 +204,8 @@ static int elevator_init(void){
 }
 
 static void elevator_exit(void){
+	list_del_init(&elevator.rider);
+	list_del_init(&building.waiting);
 	elevator_syscalls_remove();
 	remove_proc_entry(ENTRY_NAME, NULL);
 	printk("Removing /proc/%s.\n", ENTRY_NAME);
@@ -198,6 +213,110 @@ static void elevator_exit(void){
 
 module_init(elevator_init);
 module_exit(elevator_exit);
+
+void handle_load_pass(int type){
+	switch(type){
+		case ADULT:
+			elevator.occupancy += 1;
+			elevator.load += 1;
+			break;
+		case CHILD:
+			elevator.occupancy += 1;
+			if(elevator.half){
+				elevator.load += 1;
+				elevator.half = 0;
+			} else {
+				elevator.half = 1;
+			}
+			break;
+		case BELLHOP:
+			elevator.occupancy += 2;
+			elevator.load += 2;
+			break;
+		case ROOMSERVICE:
+			elevator.occupancy += 1;
+			elevator.load += 2;
+			break;
+	}
+}
+
+void handle_unload_pass(int type){
+	switch(type){
+		case ADULT:
+			elevator.occupancy -= 1;
+			elevator.load -= 1;
+			break;
+		case CHILD:
+			elevator.occupancy -= 1;
+			if(!elevator.half){
+				elevator.load -= 1;
+				elevator.half = 1;
+			} else {
+				elevator.half = 0;
+			}
+			break;
+		case BELLHOP:
+			elevator.occupancy -= 2;
+			elevator.load -= 2;
+			break;
+		case ROOMSERVICE:
+			elevator.occupancy -= 1;
+			elevator.load -= 2;
+			break;
+	}
+
+}
+
+void add_waiter(int type, int sfloor, int tfloor){
+	
+	/* Temporary Passenger object to be added to list */		
+	passenger_type* passenger;
+
+	passenger = kmalloc(sizeof(passenger_type),KFLAGS);
+	passenger->type = type;
+	passenger->sfloor = sfloor;
+	passenger->tfloor = tfloor;
+	list_add_tail(&passenger->list, &building.waiting);
+}
+
+void check_floor(int floor){	
+	if(!list_empty(&building.waiting))
+		load_passenger();
+
+	if(!list_empty(&elevator.riders))
+		unload_passenger();
+
+}
+
+void load_passenger(int floor){
+	node * ptr;
+	passenger_type * person;
+
+	list_for_each(ptr,&building.waiting){
+		person = list_entry(ptr, passenger_type, list);
+		if(person->sfloor == floor){
+			list_move(&person->list, &elevator.riders);
+			handle_load_pass(person->type);	
+		}
+	}	
+}
+
+void unload_passenger(int floor){
+	node * ptr;
+	passenger_type * person;
+	
+	list_for_each(ptr,&elevator.riders){
+		if(person->tfloor == floor){
+			handle_unload_pass(person->type);
+			list_del(&person->list);
+			kfree(person);
+		}
+	}
+}
+
+void set_target(int floor){
+
+}
 
 
 
