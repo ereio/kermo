@@ -37,8 +37,8 @@ static struct file_operations fops;
 static struct elevator_type elevator;
 static struct building_type building;
 
-static struct task_struct *t_elevator;	/* mover */
-static struct task_struct *t_loader;	/* consumer/mover */
+static struct task_struct *t_elevator;	/* consumer */
+static struct task_struct *t_loader;	/* mover */
 static struct task_struct *t_building;	/* producer */
 
 static struct mutex elevator_list_mutex;
@@ -67,6 +67,20 @@ long start_elevator(void) {
 extern long (*STUB_issue_request)(int,int,int);
 long issue_request(int pass_type, int sfloor, int dfloor) {
 	printk("New request: %d, %d => %d\n", pass_type, sfloor, dfloor);
+
+	passenger_type * passenger;
+	passenger = kmalloc(sizeof(passenger_type), KFLAGS);
+	passenger->type = pass_type;
+	passenger->sfloor = sfloor;
+	passenger->tfloor = dfloor;
+
+	// TODO Does this belong here?
+        t_building = kthread_run(building_task_run, NULL, "building thread");
+        if (IS_ERR(t_building)) {
+                printk("Error in kthread_run building thread\n");
+                return PTR_ERR(t_building);
+	}
+
 	return 0;
 }
 
@@ -123,7 +137,7 @@ void print_building_status(char* message){
 	int waiting[10];
 	node * ptr;
 	passenger_type * person;
-	
+
 	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "\n--- Building Stats ---\n");
 
 	if(!list_empty(&building.waiting)){
@@ -137,11 +151,11 @@ void print_building_status(char* message){
 	for(i=0;i < 10; i++)
 		len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "Floor %d: %d\n", i+1, waiting[i]);
 
-	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, 
-		"Total Serviced: %d\n", building.serviced); 
+	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg,
+		"Total Serviced: %d\n", building.serviced);
 }
 
-int elevator_open(struct inode *sp_inode, struct file *sp_file){	
+int elevator_open(struct inode *sp_inode, struct file *sp_file){
 	int i;
 	printk("elevator called open\n");
 
@@ -219,21 +233,51 @@ int elevator_task_run(void *data) {
 		mutex_unlock(&building_list_mutex); // Release mutex
 	}
 
-	return 0; // Not sure what this should return?
+	return 0; // TODO Not sure what this should return?
 }
 
+// Thread for loading of waiters into building list
 int building_task_run(void *data) {
-	// Loading of waiters into building list
+	// TODO We need to pass in struct passenger_type and then add as a waiter; modify add_waiter?
+	passenger_type* passenger = (passenger*)data;
+
+	mutex_lock_interruptible(&building_list_mutex);
+
+	// TODO Add here, perhaps need to call schedule()?
+	add_waiter(passenger->type, passenger->sfloor, passenger->tfloor);
+
+	mutex_unlock(&building_list_mutex);
+
+	// TODO Not sure if this belongs here
+        int ret = kthread_stop(t_building);
+        if (ret != -EINTR)
+                printk("building thread has stopped\n");
+
+	return 0;
 }
 
+// Thread for loading/unloading of waiters/passengers into/out from elevator
 int loader_task_run(void *data) {
-	// Loading/unloading of waiters into/out of elevator
+	// TODO should this be a while?
+	while (!kthread_should_stop()) {
+		mutex_lock_interruptible(&elevator_list_mutex):
+		mutex_lock_interruptible(&building_list_mutex);
+
+		check_floor(elevator.floor);
+		// TODO Is this all we need? Might need to call schedule(); Uncertain.
+
+		mutex_unlock(&building_list_mutex);
+		mutex_unlock(&elevator_list_mutex);
+	}
+
+	return 0;
 }
 
 static int elevator_init(void){
 	printk("elevator initalizing\n");
 	elevator_syscalls_create();
 
+	// TODO May need synchronization
 	fops.open = elevator_open;
 	fops.read = elevator_read;
 	fops.release = elevator_release;
@@ -248,12 +292,6 @@ static int elevator_init(void){
 	if (IS_ERR(t_elevator)) {
 		printk("Error in kthread_run elevator thread\n");
 		return PTR_ERR(t_elevator);
-	}
-
-	t_building = kthread_run(building_task_run, NULL, "building thread");
-	if (IS_ERR(t_building)) {
-		printk("Error in kthread_run building thread\n");
-		return PTR_ERR(t_building);
 	}
 
 	t_loader = kthread_run(loader_task_run, NULL, "loader thread");
@@ -277,11 +315,13 @@ static void elevator_exit(void){
 	list_del_init(&elevator.rider);
 	list_del_init(&building.waiting);
 
+	// TODO Do threads need to be stopped before lists are?
 	int ret;
 	ret = kthread_stop(t_elevator);
 	if (ret != -EINTR)
 		printk("elevator thread has stopped\n");
 
+	// TODO Redundant?
 	ret = kthread_stop(t_building);
 	if (ret != -EINTR)
 		printk("building thread has stopped\n");
@@ -354,8 +394,8 @@ void handle_unload_pass(int type){
 }
 
 void add_waiter(int type, int sfloor, int tfloor){
-	
-	/* Temporary Passenger object to be added to list */		
+
+	/* Temporary Passenger object to be added to list */
 	passenger_type* passenger;
 
 	passenger = kmalloc(sizeof(passenger_type),KFLAGS);
@@ -365,12 +405,12 @@ void add_waiter(int type, int sfloor, int tfloor){
 	list_add_tail(&passenger->list, &building.waiting);
 }
 
-void check_floor(int floor){	
+void check_floor(int floor){
 	if(!list_empty(&building.waiting))
-		load_passenger();
+		load_passenger(floor);
 
 	if(!list_empty(&elevator.riders))
-		unload_passenger();
+		unload_passenger(floor);
 }
 
 void load_passenger(int floor){
@@ -381,15 +421,15 @@ void load_passenger(int floor){
 		person = list_entry(ptr, passenger_type, list);
 		if(person->sfloor == floor){
 			list_move(&person->list, &elevator.riders);
-			handle_load_pass(person->type);	
+			handle_load_pass(person->type);
 		}
-	}	
+	}
 }
 
 void unload_passenger(int floor){
 	node * ptr;
 	passenger_type * person;
-	
+
 	list_for_each(ptr,&elevator.riders){
 		if(person->tfloor == floor){
 			handle_unload_pass(person->type);
