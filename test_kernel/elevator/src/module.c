@@ -208,10 +208,6 @@ int elevator_task_run(void *data) {
 	int next_floor = 0;
 	int distance = MAX_DISTANCE + 1; // Max distance is 9
 
-	// TODO you should schedule sleeps within each threads 'run' while loop 
-	// By calling sleep here to account for the loading, you essentially are implying "goto" 
-	// the building thread needs a loop for it as well as I don't think it should be started and
-	// stopped as it is now. It could easily deadlock. We should put it in a scheduler as you did with the mover.
 	while (!kthread_should_stop()) {
 		ssleep(FLOOR_SLEEP); // Sleep between floors
 		mutex_lock_interruptible(&building_list_mutex); // Claim mutex
@@ -232,20 +228,21 @@ int elevator_task_run(void *data) {
 
 		if (distance == MAX_DISTANCE + 1) { // No one above us
 			while (elevator.floor != 0) {
+				ssleep(FLOOR_SLEEP);
 				elevator.movement = DOWN;
 				elevator.floor--; // Go back to 0 (or stay here)
-				ssleep(FLOOR_SLEEP);
+				printk("Moving elevator down\n");
 			}
 			elevator.movement = IDLE;
 		}
 		else { // Someone above wants to load/unload
 			for (i = 0; i < distance; i++) {
+				ssleep(FLOOR_SLEEP);
 				elevator.movement = UP;
 				elevator.floor++; // Head to that floor
-				ssleep(FLOOR_SLEEP);
+				printk("Moving elevator up\n");
 			}
 			elevator.movement = LOADING;
-			ssleep(LOAD_SLEEP); // TODO  Sleep to allow loader task to run
 		}
 		mutex_unlock(&building_list_mutex); // Release mutex
 	}
@@ -255,7 +252,7 @@ int elevator_task_run(void *data) {
 
 // Thread for loading of waiters into building list
 int building_task_run(void *data) {
-	
+
 	passenger_type* passenger = (passenger_type*)data;
 
 	mutex_lock_interruptible(&building_list_mutex);
@@ -265,6 +262,7 @@ int building_task_run(void *data) {
 	// encapsulated in a while loop  with the same controls as the loader_task below.
 	// TODO also, add waiter became pointless
 	list_add_tail(&passenger->list, &building.waiting);
+	printk("Adding passenger to waiter list\n");
 
 	mutex_unlock(&building_list_mutex);
 
@@ -273,21 +271,10 @@ int building_task_run(void *data) {
 
 // Thread for loading/unloading of waiters/passengers into/out from elevator
 int loader_task_run(void *data) {
-	// should this be a while?
-	// TODO Yes
 	while (!kthread_should_stop()) {
-		// TODO should sleep in unison with the mover task. Try to mimic the list example as much as possible
-		// with how they handle thread execution scheduling. they use a const time and rotate opperations
-		// TODO Put these mutexes in check_floor, not here. The building mutex only has to do with
-		// loading and the elevator only has to do with unloading. Unloading doesn't need the
-		// building mutex locked
-		mutex_lock_interruptible(&elevator_list_mutex);
-		mutex_lock_interruptible(&building_list_mutex);
-
+		ssleep(LOAD_SLEEP);
 		check_floor(elevator.floor);
-
-		mutex_unlock(&building_list_mutex);
-		mutex_unlock(&elevator_list_mutex);
+		printk("Loading/unloading passengers\n");
 	}
 
 	return 0;
@@ -436,16 +423,22 @@ int check_load_pass(int type){
 				return !(elevator.load+2 == MAX_LOAD && elevator.half == 1);
 			break;
 	}
-	
+
 	return 0;
 }
 
 void check_floor(int floor){
+	mutex_lock_interruptible(&building_list_mutex);
+	mutex_lock_interruptible(&elevator_list_mutex);
 	if(!list_empty(&building.waiting))
 		load_passenger(floor);
+	mutex_unlock(&elevator_list_mutex);
+	mutex_unlock(&building_list_mutex);
 
+	mutex_lock_interruptible(&elevator_list_mutex);
 	if(!list_empty(&elevator.riders))
 		unload_passenger(floor);
+	mutex_unlock(&elevator_list_mutex);
 }
 
 void load_passenger(int floor){
