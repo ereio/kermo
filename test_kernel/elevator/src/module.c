@@ -5,7 +5,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/kthread.h>
-#include <linux/sleep.h>
+#include <linux/delay.h>
 #include <linux/mutex.h>
 #include <asm-generic/uaccess.h>
 #include "module.h"
@@ -19,7 +19,7 @@ MODULE_DESCRIPTION("Elevator scheduling service");
 #define PARENT NULL
 #define MAXLEN 2048
 
-#define KFLAGS (__GFP_WAIT | __GFP_IO | __GFP+FS)
+#define KFLAGS (__GFP_WAIT | __GFP_IO | __GFP_FS)
 #define _NR_START_ELEVATOR 323
 #define _NR_ISSUE_REQUEST 324
 #define _NR_STOP_ELEVATOR 325
@@ -34,8 +34,8 @@ MODULE_DESCRIPTION("Elevator scheduling service");
 
 static struct file_operations fops;
 
-static struct elevator_type elevator;
-static struct building_type building;
+static  elevator_type elevator;
+static  building_type building;
 
 static struct task_struct *t_elevator;	/* consumer */
 static struct task_struct *t_loader;	/* mover */
@@ -66,15 +66,16 @@ long start_elevator(void) {
 
 extern long (*STUB_issue_request)(int,int,int);
 long issue_request(int pass_type, int sfloor, int dfloor) {
-	printk("New request: %d, %d => %d\n", pass_type, sfloor, dfloor);
-
 	passenger_type * passenger;
+	printk("New request: %d, %d => %d\n", pass_type, sfloor, dfloor);
+	
 	passenger = kmalloc(sizeof(passenger_type), KFLAGS);
 	passenger->type = pass_type;
 	passenger->sfloor = sfloor;
 	passenger->tfloor = dfloor;
 
 	// TODO Does this belong here?
+	//  "Add_waiter is needed her, can we pass these integers to a thread instead of declaring here?
         t_building = kthread_run(building_task_run, NULL, "building thread");
         if (IS_ERR(t_building)) {
                 printk("Error in kthread_run building thread\n");
@@ -156,12 +157,11 @@ void print_building_status(char* message){
 }
 
 int elevator_open(struct inode *sp_inode, struct file *sp_file){
-	int i;
 	printk("elevator called open\n");
 
 	read_p = 1;
-	current_msg = kmalloc(sizeof(char) * MAXLEN, __GFP_WAIT | __GFP_IO | __GFP_FS);
-	print_move = kmalloc(sizeof(char) * 50, __GFP_WAIT | __GFP_IO | __GFP_FS);
+	current_msg = kmalloc(sizeof(char) * MAXLEN, KFLAGS);
+	print_move = kmalloc(sizeof(char) * 50, KFLAGS);
 
 	if(current_msg == NULL){
 		printk("ERROR, elevator_open");
@@ -172,6 +172,7 @@ int elevator_open(struct inode *sp_inode, struct file *sp_file){
 }
 
 ssize_t elevator_read(struct file *sp_file, char __user *buf, size_t size, loff_t *offset){
+	printk("elevator called read\n");
 	/* Read loops until you return 0*/
 	read_p = !read_p;
 	if(read_p) return 0;
@@ -180,7 +181,7 @@ ssize_t elevator_read(struct file *sp_file, char __user *buf, size_t size, loff_
 	print_building_status(current_msg);
 
 	copy_to_user(buf, current_msg, strlen(current_msg));
-	return len;
+	return strlen(current_msg);
 }
 
 int elevator_release(struct inode *sp_inode, struct file *sp_file){
@@ -192,6 +193,8 @@ int elevator_release(struct inode *sp_inode, struct file *sp_file){
 int elevator_task_run(void *data) {
 	node *ptr;
 	passenger_type *person;
+	int tmp = -1;
+	int i = 0;
 	int next_floor = 0;
 	int distance = MAX_DISTANCE + 1; // Max distance is 9
 
@@ -201,14 +204,14 @@ int elevator_task_run(void *data) {
 
 		list_for_each(ptr, &building.waiting) { // Loop through waiting list
 			person = list_entry(ptr, passenger_type, list);
-			int tmp = person->sfloor - elevator.floor; // Find the closest person
+			tmp = person->sfloor - elevator.floor; // Find the closest person
 			if (tmp > 0 && tmp < distance)
 				distance = tmp; // Record closest distance (if exists)
 		}
 
 		list_for_each(ptr, &elevator.riders) { // Do the same for the passengers in elevator
 			person = list_entry(ptr, passenger_type, list);
-			int tmp = person->tfloor - elevator.floor;
+			tmp = person->tfloor - elevator.floor;
 			if (tmp > 0 && tmp < distance)
 				distance = tmp;
 		}
@@ -222,7 +225,7 @@ int elevator_task_run(void *data) {
 			elevator.movement = IDLE;
 		}
 		else { // Someone above wants to load/unload
-			for (int i = 0; i < distance; i++) {
+			for (i = 0; i < distance; i++) {
 				elevator.movement = UP;
 				elevator.floor++; // Head to that floor
 				ssleep(FLOOR_SLEEP);
@@ -238,8 +241,9 @@ int elevator_task_run(void *data) {
 
 // Thread for loading of waiters into building list
 int building_task_run(void *data) {
+	int ret = -1;
 	// TODO We need to pass in struct passenger_type and then add as a waiter; modify add_waiter?
-	passenger_type* passenger = (passenger*)data;
+	passenger_type* passenger = (passenger_type*)data;
 
 	mutex_lock_interruptible(&building_list_mutex);
 
@@ -249,7 +253,7 @@ int building_task_run(void *data) {
 	mutex_unlock(&building_list_mutex);
 
 	// TODO Not sure if this belongs here
-        int ret = kthread_stop(t_building);
+        ret = kthread_stop(t_building);
         if (ret != -EINTR)
                 printk("building thread has stopped\n");
 
@@ -260,7 +264,7 @@ int building_task_run(void *data) {
 int loader_task_run(void *data) {
 	// TODO should this be a while?
 	while (!kthread_should_stop()) {
-		mutex_lock_interruptible(&elevator_list_mutex):
+		mutex_lock_interruptible(&elevator_list_mutex);
 		mutex_lock_interruptible(&building_list_mutex);
 
 		check_floor(elevator.floor);
@@ -312,7 +316,7 @@ static int elevator_init(void){
 }
 
 static void elevator_exit(void){
-	list_del_init(&elevator.rider);
+	list_del_init(&elevator.riders);
 	list_del_init(&building.waiting);
 
 	// TODO Do threads need to be stopped before lists are?
@@ -437,10 +441,6 @@ void unload_passenger(int floor){
 			kfree(person);
 		}
 	}
-}
-
-void set_target(int floor){
-
 }
 
 
