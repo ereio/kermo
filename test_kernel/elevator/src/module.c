@@ -272,7 +272,6 @@ void check_floor(int floor){
 
 	if(!list_empty(&elevator.riders))
 		unload_passenger();
-
 }
 
 void load_passenger(int floor){
