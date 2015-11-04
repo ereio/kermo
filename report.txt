@@ -1,0 +1,84 @@
+● ==========================
+● Problem statement:
+● ============================
+Introduction to the nuts and bolts of system calls, kernel programming, concurrency, and
+synchronization in the kernel. It is divided into three parts:
+1. Write a program that uses exactly ten system calls.
+2. You will create a kernel module called my_xtime that calls
+current_kernel_time() and stores the value. current_kernel_time() holds the number
+of seconds since the Epoch and the number of nanoseconds since the last second. 
+3. implement a scheduling algorithm for a hotel elevator.
+Your elevator must track the number of passengers and the total weight. Elevator load consists of five
+types of people: adults, children, bellhops, and room service
+
+● ============================
+● Steps taken to solve problem
+● ============================
+1. Part one
+    a.
+2. Part Two
+
+3. Part Three
+
+● ============================
+● Assumptions
+● ============================
+  - Module would be started and stopped before the system calls are called.
+  - issue_request wouldn't be called more than once each second
+  -
+
+● ============================
+● System calls
+● ============================
+1. start_elevator();
+2. issue_request(int, int, int);
+3. stop_elevator();
+
+● ============================
+● Problems
+● ============================
+1.  Cannot use floating point numbers in the kernel! This means you will have to "emulate" the appearance of floats.
+    If you have two longs where one is the seconds and nano seconds, you can print the seconds and a period and shift
+    the how the nano seconds are printed. For example, 56 nano seconds will appear as .0000056 as it should.
+2.
+
+● ============================
+● Division of Labor
+● ============================
+Taylor Ereio
+- Part One
+- Part Two
+- Documentation
+- Elevator loading, unloading, List management, output and structures
+Zach Deimer
+- List managment
+- Threading
+- Mutexing and access
+Ricardo Noriega
+- Documentation
+- Part One
+
+● ============================
+● Slack Days Used
+● ============================
+2 Days for Taylor Ereio
+2 Days for Zach Deimer
+2 Days for Ricardo Noriega
+
+● ============================
+● Log
+● ============================
+10/24/15
+
+10/28/15
+
+11/1/15
+
+11/2/15
+
+11/3/15
+
+11/4/15
+
+
+
