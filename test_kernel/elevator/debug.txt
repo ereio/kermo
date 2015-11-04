@@ -1,8 +1,0 @@
-make[1]: Entering directory `/usr/src/test_kernel'
-  CC [M]  /home/hubbub/Kernel/kermo/test_kernel/elevator/src/module.o
-  LD [M]  /home/hubbub/Kernel/kermo/test_kernel/elevator/elevator.o
-  Building modules, stage 2.
-  MODPOST 1 modules
-  CC      /home/hubbub/Kernel/kermo/test_kernel/elevator/elevator.mod.o
-  LD [M]  /home/hubbub/Kernel/kermo/test_kernel/elevator/elevator.ko
-make[1]: Leaving directory `/usr/src/test_kernel'
