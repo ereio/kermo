@@ -105,7 +105,7 @@ void get_total_waiting(char* message){
 
     for(i=0; i < 10; i++){
     	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, 
-		"Floor %d: %d\n", i, building.waiting[i]); 
+		"Floor %d: %d\n", i+1, building.waiting[i]); 
     }
 }
 
