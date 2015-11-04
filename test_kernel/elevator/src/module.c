@@ -32,6 +32,7 @@ MODULE_DESCRIPTION("Elevator scheduling service");
 #define ROOMSERVICE 3
 #define MAX_DISTANCE 9
 #define MAX_LOAD 8
+#define ISSUE_ERROR 1
 
 static struct file_operations fops;
 
@@ -69,7 +70,10 @@ extern long (*STUB_issue_request)(int,int,int);
 long issue_request(int pass_type, int sfloor, int tfloor) {
 	passenger_type * passenger;
 	printk("New request: %d, %d => %d\n", pass_type, sfloor, tfloor);
-	
+
+	if(pass_type < 0 || pass_type > 3) return ISSUE_ERROR;
+	if(sfloor < 1 || sfloor > 10) return ISSUE_ERROR;
+	if(tfloor < 1 || tfloor > 10) return ISSUE_ERROR;	
 	/**/
 	passenger = kmalloc(sizeof(passenger_type), KFLAGS);
 	passenger->type = pass_type;
