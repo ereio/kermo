@@ -148,7 +148,7 @@ ssize_t elevator_read(struct file *sp_file, char __user *buf, size_t size, loff_
 	read_p = !read_p;
 	if(read_p) return 0;
 	printk("elevator called read\n");
-	
+	start_elevator();
 	len_msg = 0;
 	len_msg += snprintf(current_msg, MAXLEN, "\n--- Elevator ---\n");
 	get_movement(current_msg);
@@ -178,6 +178,8 @@ static int elevator_init(void){
 	fops.open = elevator_open;
 	fops.read = elevator_read;
 	fops.release = elevator_release;
+	INIT_LIST_HEAD(&elevator.riders);
+	INIT_LIST_HEAD(&building.waiting);
 
 	if(!proc_create(ENTRY_NAME, PERMS, NULL, &fops)){
 		printk("ERROR! elevator_init\n");

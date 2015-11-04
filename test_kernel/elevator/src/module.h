@@ -1,3 +1,10 @@
+#include <linux/list.h>
+
+typedef struct node {
+        node *next;
+        node *prev;
+};
+
 typedef enum {IDLE, UP, DOWN, LOADING, STOPPED} movement_type;
 typedef enum {ADULT, CHILD, BELLHOP, ROOMSERVICE} person_type;
 typedef struct elevator_type{
@@ -7,10 +14,11 @@ typedef struct elevator_type{
 	int load;
 	
 	movement_type movement;	
+	node riders; 
 };
 
 typedef struct building_type{
-	int waiting[10];
+	node waiting;
 	int serviced;
 };
 
