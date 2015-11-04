@@ -4,6 +4,9 @@
 #include <linux/proc_fs.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/kthread.h>
+#include <linux/sleep.h>
+#include <linux/mutex.h>
 #include <asm-generic/uaccess.h>
 #include "module.h"
 
@@ -21,20 +24,25 @@ MODULE_DESCRIPTION("Elevator scheduling service");
 #define _NR_ISSUE_REQUEST 324
 #define _NR_STOP_ELEVATOR 325
 
-#define SLEEP_TIME 1
+#define FLOOR_SLEEP 2
+#define LOAD_SLEEP 1
 #define ADULT 0
 #define CHILD 1
 #define BELLHOP 2
 #define ROOMSERVICE 3
+#define MAX_DISTANCE 9
 
 static struct file_operations fops;
 
 static struct elevator_type elevator;
 static struct building_type building;
 
-static struct task_struct *elevator;	/* mover */
-static struct task_struct *loader;	/* consumer/mover */
-static struct task_struct *building;	/* producer */
+static struct task_struct *t_elevator;	/* mover */
+static struct task_struct *t_loader;	/* consumer/mover */
+static struct task_struct *t_building;	/* producer */
+
+static struct mutex elevator_list_mutex;
+static struct mutex building_list_mutex;
 
 static char * current_msg;
 static char * print_move;
@@ -59,8 +67,6 @@ long start_elevator(void) {
 extern long (*STUB_issue_request)(int,int,int);
 long issue_request(int pass_type, int sfloor, int dfloor) {
 	printk("New request: %d, %d => %d\n", pass_type, sfloor, dfloor);
-	
-	
 	return 0;
 }
 
@@ -103,11 +109,11 @@ void print_elevator_status(char* message){
 			strcpy(print_move, "STOPPED");
 			break;
 	}
-	
+
 	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "Movement state: %s\n", print_move);
 	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "Current Floor: %d\n", elevator.floor);
 	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, "Next Floor: %d\n", elevator.target);
-	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg, 
+	len_msg += snprintf(current_msg + len_msg, MAXLEN-len_msg,
 			"Current Weight: %d\nPassengers: %d", elevator.load, elevator.occupancy); 
 }
 
@@ -168,16 +174,93 @@ int elevator_release(struct inode *sp_inode, struct file *sp_file){
 	return 0;
 }
 
+// Thread for moving the elevator
+int elevator_task_run(void *data) {
+	node *ptr;
+	passenger_type *person;
+	int next_floor = 0;
+	int distance = MAX_DISTANCE + 1; // Max distance is 9
+
+	while (!kthread_should_stop()) {
+		ssleep(FLOOR_SLEEP); // Sleep between floors
+		mutex_lock_interruptible(&building_list_mutex); // Claim mutex
+
+		list_for_each(ptr, &building.waiting) { // Loop through waiting list
+			person = list_entry(ptr, passenger_type, list);
+			int tmp = person->sfloor - elevator.floor; // Find the closest person
+			if (tmp > 0 && tmp < distance)
+				distance = tmp; // Record closest distance (if exists)
+		}
+
+		list_for_each(ptr, &elevator.riders) { // Do the same for the passengers in elevator
+			person = list_entry(ptr, passenger_type, list);
+			int tmp = person->tfloor - elevator.floor;
+			if (tmp > 0 && tmp < distance)
+				distance = tmp;
+		}
+
+		if (distance == MAX_DISTANCE + 1) { // No one above us
+			while (elevator.floor != 0) {
+				elevator.movement = DOWN;
+				elevator.floor--; // Go back to 0 (or stay here)
+				ssleep(FLOOR_SLEEP);
+			}
+			elevator.movement = IDLE;
+		}
+		else { // Someone above wants to load/unload
+			for (int i = 0; i < distance; i++) {
+				elevator.movement = UP;
+				elevator.floor++; // Head to that floor
+				ssleep(FLOOR_SLEEP);
+			}
+			elevator.movement = LOADING;
+			ssleep(LOAD_SLEEP); // Sleep to allow loader task to run
+		}
+		mutex_unlock(&building_list_mutex); // Release mutex
+	}
+
+	return 0; // Not sure what this should return?
+}
+
+int building_task_run(void *data) {
+	// Loading of waiters into building list
+}
+
+int loader_task_run(void *data) {
+	// Loading/unloading of waiters into/out of elevator
+}
+
 static int elevator_init(void){
 	printk("elevator initalizing\n");
 	elevator_syscalls_create();
-	
+
 	fops.open = elevator_open;
 	fops.read = elevator_read;
 	fops.release = elevator_release;
 
 	INIT_LIST_HEAD(&elevator.riders);
 	INIT_LIST_HEAD(&building.waiting);
+
+	mutex_init(&elevator_list_mutex);
+	mutex_init(&building_list_mutex);
+
+	t_elevator = kthread_run(elevator_task_run, NULL, "elevator thread");
+	if (IS_ERR(t_elevator)) {
+		printk("Error in kthread_run elevator thread\n");
+		return PTR_ERR(t_elevator);
+	}
+
+	t_building = kthread_run(building_task_run, NULL, "building thread");
+	if (IS_ERR(t_building)) {
+		printk("Error in kthread_run building thread\n");
+		return PTR_ERR(t_building);
+	}
+
+	t_loader = kthread_run(loader_task_run, NULL, "loader thread");
+	if (IS_ERR(t_loader)) {
+		printk("Error in kthread_run loader thread\n");
+		return PTR_ERR(t_loader);
+	}
 
 	building.serviced = 0;
 
@@ -193,10 +276,26 @@ static int elevator_init(void){
 static void elevator_exit(void){
 	list_del_init(&elevator.rider);
 	list_del_init(&building.waiting);
+
+	int ret;
+	ret = kthread_stop(t_elevator);
+	if (ret != -EINTR)
+		printk("elevator thread has stopped\n");
+
+	ret = kthread_stop(t_building);
+	if (ret != -EINTR)
+		printk("building thread has stopped\n");
+
+	ret = kthread_stop(t_loader);
+	if (ret != -EINTR)
+		printk("loader thread has stopped\n");
+
 	elevator_syscalls_remove();
 	remove_proc_entry(ENTRY_NAME, NULL);
 	printk("Removing /proc/%s.\n", ENTRY_NAME);
 }
+
+
 
 module_init(elevator_init);
 module_exit(elevator_exit);

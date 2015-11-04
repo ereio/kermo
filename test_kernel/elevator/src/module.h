@@ -13,9 +13,9 @@ typedef struct elevator_type{
 	int occupancy;
 	int load;
 	int half;
-	
-	movement_type movement;	
-	node riders; 
+
+	movement_type movement;
+	node riders;
 };
 
 typedef struct building_type{
@@ -24,7 +24,7 @@ typedef struct building_type{
 };
 
 typedef struct passenger_type{
-	node list;	
+	node list;
 	int type;
 	int sfloor;
 	int tfloor;
@@ -41,3 +41,6 @@ ssize_t elevator_read(struct file *sp_file, char __user *buf, size_t size, loff_
 int elevator_release(struct inode *sp_inode, struct file *sp_file);
 static int elevator_init(void);
 static void elevator_exit(void);
+int elevator_task_run(void);
+int building_task_run(void);
+int loader_task_run(void);
