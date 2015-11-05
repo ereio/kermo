@@ -342,12 +342,35 @@ static int elevator_init(void){
 }
 
 static void elevator_exit(void){
+	node * ptr, *next_ptr;
+	int count = 0;
+	passenger_type * person;
 	int ret = -1;
 	printk("Attempting to delete lists\n");
-	kfree(&elevator.riders);
-	kfree(&building.waiting);
-	// list_del_init(&elevator.riders);
-	// list_del_init(&building.waiting);
+
+	if (!list_empty(&building.waiting)) {
+		list_for_each_safe(ptr, next_ptr, &building.waiting) {
+			printk("Deleting item from building: %d\n", count);
+			person = list_entry(ptr, passenger_type, list);
+			list_del(&person->list);
+			kfree(person);
+			count++;
+		}
+	}
+
+	count = 0;
+	printk("Finished deleting item buildings\n");
+
+	if (!list_empty(&elevator.riders)) {
+		list_for_each_safe(ptr, next_ptr,  &elevator.riders) {
+			printk("Deleting item from elevator: %d\n", count);
+			person = list_entry(ptr, passenger_type, list);
+			list_del(&person->list);
+			kfree(person);
+			count++;
+		}
+	}
+
 	printk("Did it, otherwise fuck\n");
 
 	//  Do threads need to be stopped before lists are?
@@ -476,10 +499,10 @@ void load_passenger(int floor){
 }
 
 void unload_passenger(int floor){
-	node * ptr;
+	node * ptr, *next_ptr;
 	passenger_type * person;
 
-	list_for_each(ptr,&elevator.riders){
+	list_for_each_safe(ptr,next_ptr,&elevator.riders){
 		person = list_entry(ptr, passenger_type, list);
 		if(person->tfloor == floor){
 			printk("Unloading passenger\n");
