@@ -5,7 +5,7 @@ Kernel Module Observations and Elevator Simulation
 <br>Member 2: Zach Deimer
 <br>Member 3: Ricardo Noriega
 
-p2-Ereio-Deimer-Noriega.tar Contents:
+p2_Ereio_Deimer_Noriega.tar Contents:
 <br>README.txt
 <br>report.txt
 <br>Part_One
