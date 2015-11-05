@@ -1,7 +1,7 @@
 #include <linux/list.h>
 
 /* List_head is a built in clase. Doesn't need a definition*/
-typedef struct list_head node;
+// typedef struct list_head node;
 
 typedef enum {IDLE, UP, DOWN, LOADING, STOPPED} movement_type;
 
@@ -13,16 +13,16 @@ typedef struct {
 	int half;
 
 	movement_type movement;
-	node riders;
+	struct list_head riders;
 } elevator_type;
 
 typedef struct {
-	node waiting;
+	struct list_head waiting;
 	int serviced;
 }  building_type;
 
 typedef struct {
-	node list;
+	struct list_head list;
 	int type;
 	int sfloor;
 	int tfloor;
