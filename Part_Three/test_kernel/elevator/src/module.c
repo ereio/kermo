@@ -233,13 +233,13 @@ int elevator_task_run(void *data) {
 				elevator.target = person->tfloor;
 				printk("New target in elevator riders: %d\n", elevator.target);
 			}
-		} else if(shutdown == 1){
+		} else if(elevator.shutdown == 1){
 			elevator.target = 1;
 		}
 		mutex_unlock(&elevator_list_mutex);
 
 		mutex_lock_interruptible(&elevator_list_mutex);
-		if(list_empty(&elevator.riders) && shutdown != 1){
+		if(list_empty(&elevator.riders) && elevator.shutdown != 1){
 			mutex_lock_interruptible(&building_list_mutex);
 			printk("Claiming building list mutex\n");
 			person = list_entry(&building.waiting, passenger_type, list);
