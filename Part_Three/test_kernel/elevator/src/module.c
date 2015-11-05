@@ -93,8 +93,10 @@ long issue_request(int pass_type, int sfloor, int tfloor) {
 extern long (*STUB_stop_elevator)(void);
 long stop_elevator(void) {
 	printk("Stopping elevator\n");
-
-	shutdown = 1;
+	
+	mutex_lock_interruptible(&elevator_list_mutex);
+	elevator.shutdown = 1;
+	mutex_unlock(&elevator_list_mutex);
 	return 0;
 }
 
