@@ -25,16 +25,25 @@ p2_Ereio_Deimer_Noriega.tar Contents:
 
 To Run Parts:
 - Part One (in Part_One):
+- 
 	strace -o log part1.x
 - Part Two (in Part_Two):
+- 
 	insmod x_time
+
 	cat /proc/timed
+	
 - Part Three
 	make
+
 	navigate to src folder
+	
 	sudo insmod elevator.ko
+	
 	./../elevator_driver/consumer.x --start
+	
 	./../elevator_driver/producer.x 
+	
 	./../elevator_driver/consumer.x --stop
 
 Known Bugs:
