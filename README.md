@@ -23,8 +23,8 @@ p2-Ereio-Deimer-Noriega.tar Contents:
 <br>./Part_Two/make clean
 <br>./Part_Three/test_kernel/elevator/make clean
 
-<br>To Run Producer and Consumer:
-<br><FILL HERE>
+<br>To Run Parts:
+./Part_One/strace -c ./a.out
 
 Known Bugs:
 1. Deadlocks
