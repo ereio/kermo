@@ -231,8 +231,6 @@ int elevator_task_run(void *data) {
 				elevator.target = person->tfloor;
 				printk("New target in elevator riders: %d\n", elevator.target);
 			}
-		} else if(shutdown == 1){
-			elevator.target = 1;
 		}
 		mutex_unlock(&elevator_list_mutex);
 
@@ -262,7 +260,6 @@ int elevator_task_run(void *data) {
 		} else if (elevator.floor == elevator.target){
 			elevator.movement = LOADING;
 		}
-	
 		mutex_unlock(&elevator_list_mutex);
 		
 		printk("Restarting loop\n");
