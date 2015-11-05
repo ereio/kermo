@@ -1,4 +1,4 @@
-● ==========================
+● ============================
 ● Problem statement:
 ● ============================
 Introduction to the nuts and bolts of system calls, kernel programming, concurrency, and
@@ -7,7 +7,7 @@ synchronization in the kernel. It is divided into three parts:
 2. You will create a kernel module called my_xtime that calls
 current_kernel_time() and stores the value. current_kernel_time() holds the number
 of seconds since the Epoch and the number of nanoseconds since the last second. 
-3. implement a scheduling algorithm for a hotel elevator.
+3. Implement a scheduling algorithm for a hotel elevator.
 Your elevator must track the number of passengers and the total weight. Elevator load consists of five
 types of people: adults, children, bellhops, and room service
 
@@ -15,17 +15,28 @@ types of people: adults, children, bellhops, and room service
 ● Steps taken to solve problem
 ● ============================
 1. Part one
-    a.
+    a. Created an empty function that just returned 0 in main.
+    b. Started adding functions to main to try to increase the number of system calls it made until it reached ten.
 2. Part Two
-
+    a. First created an open, read, release, and in initialize set file operations to the open, read, and release operations.
+    b. Run my_xtime_open which returns 0 if succesful.
+    c. In my_xtime_read print the Unix Epoch and if proc/timed had been ran before, print the time gone by since that last call.
+    d. In my_xtime_release, free the current message.
+    e. Exit by removing the proc entry.
 3. Part Three
+    a. Set structure of elevator
+    b. Set the lists for waiting passengers.
+    c. Set the lists for passengers that are waiting.
+    d. Create threads for moving and consuming the riders of the elevator.
+    e. Make thread for caching the waiters.
+    f. Logic for handling types.
+    g. Move elevators.
 
 ● ============================
 ● Assumptions
 ● ============================
   - Module would be started and stopped before the system calls are called.
   - issue_request wouldn't be called more than once each second
-  -
 
 ● ============================
 ● System calls
@@ -40,7 +51,7 @@ types of people: adults, children, bellhops, and room service
 1.  Cannot use floating point numbers in the kernel! This means you will have to "emulate" the appearance of floats.
     If you have two longs where one is the seconds and nano seconds, you can print the seconds and a period and shift
     the how the nano seconds are printed. For example, 56 nano seconds will appear as .0000056 as it should.
-2.
+2. Synchronization of two threads.
 
 ● ============================
 ● Division of Labor
@@ -54,11 +65,10 @@ Zach Diemer
 - List managment
 - Threading
 - Mutexing and access
-- Fixing Taylor's bugs
 Ricardo Noriega
 - Documentation
 - Part One
-- Catering
+- List management and structures.
 
 ● ============================
 ● Slack Days Used
@@ -70,17 +80,41 @@ Ricardo Noriega
 ● ============================
 ● Log
 ● ============================
-10/24/15
-
-10/28/15
-
-11/1/15
-
-11/2/15
+11/4/15
+- More scheduling fixes.
+- Made Report.
+- Made README.
 
 11/3/15
+- Added threading for elevator.
+- Fixed threading issues.
+- Scheduling fixes.
+- Elevator exit.
+- Lists fixes.
 
-11/4/15
+10/30/15
+- Progress made on structure of elevator.
+- Added elevator functionality.
+- Converted over to using linux linked list for print and
+  manipulation.
+
+10/28/15
+- Finished part 2 (decimal for unsingend long).
+- Cleaned part 2.
+
+10/24/15
+- Module printing and elevator structure implemented.
+- Added necessary files for kernel compilation.
+- Module added.
+- Makefile and kernel dirs.
+
+10/21/15
+- Started working  on layout for part 3's elevator module.
+- Part two finished except for using unsigned longs instead of decimals.
+
+10/19/15
+- Part 1 started and completed.
+- Part 2 started.
 
 ● ============================
 ● Sources and References
@@ -93,4 +127,3 @@ http://stackoverflow.com/questions/1102542/how-to-define-an-enumerated-type-enum
 http://stackoverflow.com/questions/4983010/invalid-type-argument-of-c-structs
 http://www.cplusplus.com/reference/cstring/strcpy/
 https://arvindsraj.wordpress.com/2012/10/05/adding-hello-world-system-call-to-linux/
-
