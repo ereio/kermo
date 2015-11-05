@@ -41,7 +41,6 @@ static building_type building;
 
 static struct task_struct *t_elevator;	/* consumer */
 static struct task_struct *t_loader;	/* mover */
-static struct task_struct *t_building;	/* producer */
 
 static struct mutex elevator_list_mutex;
 static struct mutex building_list_mutex;
@@ -81,11 +80,11 @@ long issue_request(int pass_type, int sfloor, int tfloor) {
 	passenger->sfloor = sfloor;
 	passenger->tfloor = tfloor;
 
-        t_building = kthread_run(building_task_run, (void*) passenger, "building thread");
-        if (IS_ERR(t_building)) {
-                printk("Error in kthread_run building thread\n");
-                return PTR_ERR(t_building);
-	}
+        printk("passenger type: %d\npassenger start: %d\npassenger dest: %d\n", passenger->type, passenger->sfloor, passenger->tfloor);
+
+	mutex_lock_interruptible(&building_list_mutex);
+	list_add_tail(&passenger->list, &building.waiting);
+	mutex_unlock(&building_list_mutex);
 
 	return 0;
 }
@@ -222,41 +221,40 @@ int elevator_task_run(void *data) {
 	passenger_type *person;
 
 	while (!kthread_should_stop()) {
-		printk("Looping elevator\n");
 		ssleep(FLOOR_SLEEP);
 
 		mutex_lock_interruptible(&elevator_list_mutex);
+		elevator.target = -1;
 		if(!list_empty(&elevator.riders)){
-			printk("Claiming elevator list mutex\n");
-			person = list_entry(&elevator.riders, passenger_type, list);
+			person = list_last_entry(&elevator.riders, passenger_type, list);
 			if (person->tfloor > 0) {
 				elevator.target = person->tfloor;
 				printk("New target in elevator riders: %d\n", elevator.target);
 			}
-		} else if(elevator.shutdown == 1){
-			elevator.target = 1;
 		}
 		mutex_unlock(&elevator_list_mutex);
 
 		mutex_lock_interruptible(&elevator_list_mutex);
-		if(list_empty(&elevator.riders) && elevator.shutdown != 1){
-			mutex_lock_interruptible(&building_list_mutex);
-			printk("Claiming building list mutex\n");
-			person = list_entry(&building.waiting, passenger_type, list);
+		mutex_lock_interruptible(&building_list_mutex);
+		if(list_empty(&elevator.riders) && !list_empty(&building.waiting)){
+			person = list_last_entry(&building.waiting, passenger_type, list);
+			printk("passenger type: %d\npassenger start: %d\npassenger dest: %d\n", person->type, person->sfloor, person->tfloor);
 			if (person->sfloor > 0) {
 				elevator.target = person->sfloor;			
 				printk("New target in building waiters: %d\n", elevator.target);
+				printk("Current floor: %d\n", elevator.floor);
 			}
-			mutex_unlock(&building_list_mutex);
 		}
+		mutex_unlock(&building_list_mutex);
 		mutex_unlock(&elevator_list_mutex);
 		
 		mutex_lock_interruptible(&elevator_list_mutex);
-		printk("THE TARGET IS FLOOR : %d\n", elevator.target);
-		if(elevator.floor < elevator.target){
+		if (elevator.target == -1) {
+			elevator.movement = IDLE;
+		} else if(elevator.floor < elevator.target){
 			elevator.movement = UP;
 			elevator.floor++; // Go back to 0 (or stay here)
-			printk("Moving elevator down\n");
+			printk("Moving elevator up\n");
 		} else if (elevator.floor > elevator.target) {
 			elevator.movement = DOWN;
 			elevator.floor--; // Go back to 0 (or stay here)
@@ -264,58 +262,15 @@ int elevator_task_run(void *data) {
 		} else if (elevator.floor == elevator.target){
 			elevator.movement = LOADING;
 		}
-	
 		mutex_unlock(&elevator_list_mutex);
-		
-		printk("Restarting loop\n");
 	}
-
-	printk("Exiting loop\n");
 
 	return 0; // TODO Not sure what this should return?
-}
-
-// Thread for loading of waiters into building list
-int building_task_run(void *data) {
-	passenger_type* passenger = (passenger_type*)data;
-	printk("passenger type: %d\npassenger start: %d\npassenger dest: %d\n", passenger->type, passenger->sfloor, passenger->tfloor);
-
-	while (!kthread_should_stop()) {
-		printk("Waiting for building list mutex in building thread\n");
-		mutex_lock_interruptible(&building_list_mutex);
-		if(list_empty(&building.waiting)) {
-			INIT_LIST_HEAD(&passenger->list);
-			printk("Added passenger as head of waiter list\n");
-		} else {
-			printk("Added passenger to waiter list tail\n");
-			list_add_tail(&passenger->list, &building.waiting);
-		}		
-		mutex_unlock(&building_list_mutex);
-
-		stop_building_thread();
-		printk("Stopped building thread\n");
-		
-	}
-
-	printk("Leaving building thread\n");
-
-	return 0;
-}
-
-void stop_building_thread(void) {
-	int ret;
-	printk("Attempting to stop building thread\n");
-        ret = kthread_stop(t_building);
-        if (ret != -EINTR)
-                printk("building thread has stopped\n");
-        else
-                printk("building thread has not stopped, err: %d\n", ret);
 }
 
 // Thread for loading/unloading of waiters/passengers into/out from elevator
 int loader_task_run(void *data) {
 	while (!kthread_should_stop()) {
-		printk("Looping loader thread\n");
 		ssleep(LOAD_SLEEP);
 		check_floor(elevator.floor);
 	}
@@ -364,38 +319,24 @@ static int elevator_init(void){
 
 static void elevator_exit(void){
 	struct list_head *ptr, *next_ptr;
-	int count = 0;
 	passenger_type * person;
 	int ret = -1;
-	printk("Attempting to delete lists\n");
 
 	if (!list_empty(&building.waiting)) {
 		list_for_each_safe(ptr, next_ptr, &building.waiting) {
-			printk("Entered foreach\n");
 			person = list_entry(ptr, passenger_type, list);
-			printk("Found person\n");
 			list_del(ptr);
-			printk("Deleted node\n");
 			kfree(person);
-			printk("Deleting item from building: %d\n", count);
-			count++;
 		}
 	}
-
-	count = 0;
-	printk("Finished deleting item buildings\n");
 
 	if (!list_empty(&elevator.riders)) {
 		list_for_each_safe(ptr, next_ptr,  &elevator.riders) {
 			person = list_entry(ptr, passenger_type, list);
 			list_del(ptr);
 			kfree(person);
-			printk("Deleting item from elevator: %d\n", count);
-			count++;
 		}
 	}
-
-	printk("Finished deleting items from elevator\n");
 
 	//  Do threads need to be stopped before lists are?
 	// TODO One of the requirements is that when elevator stop is called, the elevator
@@ -497,19 +438,14 @@ int check_load_pass(int type){
 void check_floor(int floor){
 	mutex_lock_interruptible(&building_list_mutex);
 	mutex_lock_interruptible(&elevator_list_mutex);
-	printk("Claim both mutexes to load passengers\n");
 	if(!list_empty(&building.waiting) && elevator.shutdown != 1)
 		load_passenger(floor);
-	printk("Releasing both mutexes to load passengers\n");
 	mutex_unlock(&elevator_list_mutex);
 	mutex_unlock(&building_list_mutex);
 
-	printk("Checking to unload passengers\n");
 	mutex_lock_interruptible(&elevator_list_mutex);
-	printk("Claiming mutex for elevator list\n");
 	if(!list_empty(&elevator.riders))
 		unload_passenger(floor);
-	printk("Releasing both mutexes to load passengers\n");
 	mutex_unlock(&elevator_list_mutex);
 }
 

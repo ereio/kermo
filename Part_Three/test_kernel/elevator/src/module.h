@@ -43,7 +43,6 @@ static int elevator_init(void);
 static void elevator_exit(void);
 
 int elevator_task_run(void *data);
-int building_task_run(void *data);
 int loader_task_run(void *data);
 
 void add_waiter(int type, int sfloor, int tfloor);
@@ -53,4 +52,3 @@ int check_load_pass(int type);
 void unload_passenger(int floor);
 void load_passenger(int floor);
 void check_floor(int floor);
-void stop_building_thread(void);
